@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>麻雀アシスタント</title>
+<style>
+:root{
+  --bg:#092e27;--panel:#10473c;--panel2:#16584a;
+  --gold:#ffdc83;--white:#fffdf5;--muted:#bed8ce;
+  --red:#c7463d;--line:#347366;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--white);
+  font-family:system-ui,-apple-system,"Meiryo",sans-serif;
+}
+header{
+  padding:22px 14px;text-align:center;
+  background:#061f1b;border-bottom:2px solid var(--gold);
+}
+header h1{margin:0;color:var(--gold);font-size:clamp(24px,5vw,36px)}
+header p{margin:8px 0 0;color:var(--muted)}
+main{width:min(1050px,100%);margin:auto;padding:14px}
+.panel{
+  padding:16px;margin:14px 0;background:var(--panel);
+  border:1px solid var(--line);border-radius:14px;
+}
+h2{font-size:20px;margin:0 0 12px;color:var(--gold)}
+h3{font-size:16px;margin:16px 0 8px}
+p{line-height:1.65}
+.muted{font-size:13px;color:var(--muted)}
+.tile-grid{display:flex;flex-wrap:wrap;gap:5px}
+.tile{
+  min-width:39px;height:51px;padding:4px;
+  border:1px solid #d1c7b1;border-radius:6px;
+  background:#fffdf5;color:#25221c;
+  font-size:19px;font-weight:700;cursor:pointer;
+  box-shadow:0 2px 0 #b2a78f;
+}
+.tile:hover{filter:brightness(.93);transform:translateY(-1px)}
+.tile:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.tile.red{color:#c92323}
+.hand-tile{
+  min-width:38px;height:52px;font-size:20px;
+  background:#fffdf5;color:#25221c;border-radius:5px;
+  border:1px solid #d1c7b1;cursor:pointer;
+  box-shadow:0 2px 0 #b2a78f;
+}
+.hand-tile.red{color:#c92323}
+.hand-tile.recommend{outline:3px solid var(--gold);outline-offset:1px}
+.hand{display:flex;flex-wrap:wrap;gap:5px;min-height:56px;align-items:center}
+.suit-title{font-weight:bold;margin:13px 0 7px}
+button.action{
+  padding:11px 15px;border:0;border-radius:8px;
+  background:var(--gold);color:#25221c;font-weight:800;
+  cursor:pointer;font-size:15px;
+}
+button.secondary{
+  padding:9px 12px;border:1px solid var(--line);
+  border-radius:8px;background:#d6e8df;color:#153b31;
+  cursor:pointer;font-weight:700;
+}
+button.danger{background:#f3d3cf;color:#68251e}
+button:disabled{opacity:.4;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+input,select{
+  max-width:100%;padding:9px;border-radius:7px;
+  border:1px solid #8eafa3;background:#fff;color:#172b24;
+  font-size:15px;
+}
+label{display:inline-flex;flex-direction:column;gap:5px;margin:6px 12px 6px 0}
+.result-box{
+  padding:13px;margin:9px 0;background:#0a382f;
+  border:1px solid var(--line);border-radius:9px;
+}
+.big{font-size:23px;font-weight:800;color:var(--gold)}
+.good{color:var(--gold);font-weight:800}
+.bad{color:#ffb3a8}
+.pill{
+  display:inline-block;padding:4px 9px;margin:3px;
+  border:1px solid #679c8a;border-radius:20px;
+  font-size:13px;background:#164c40;
+}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:9px 6px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--gold)}
+.best-row{background:#1b5947}
+details{margin-top:10px}
+summary{cursor:pointer;color:var(--gold);font-weight:700}
+footer{padding:20px;text-align:center;color:var(--muted);font-size:12px}
+hr{border:0;border-top:1px solid var(--line);margin:15px 0}
+@media(max-width:500px){
+  main{padding:8px}
+  .panel{padding:12px}
+  .tile{min-width:34px;height:46px;font-size:17px}
+  .hand-tile{min-width:34px;height:47px;font-size:18px}
+  table{font-size:12px}
+  th,td{padding:7px 3px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>🀄 麻雀AIアシスタント</h1>
+  <p>牌効率・シャンテン数・受け入れ・待ち牌を分析</p>
+</header>
+
+<main>
+<section class="panel">
+  <h2>① 手牌を入力</h2>
+  <p class="muted">
+    牌をクリックして追加。同じ牌は4枚まで。
+    手牌の牌をクリックすると、その牌だけ取り消せます。
+  </p>
+  <div id="picker"></div>
+  <div class="actions">
+    <button class="secondary" onclick="undoTile()">1枚戻す</button>
+    <button class="secondary danger" onclick="clearHand()">手牌を全消去</button>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>② 現在の手牌</h2>
+  <div id="hand" class="hand"></div>
+  <p id="handCount" class="muted">0枚</p>
+  <div class="actions">
+    <button class="secondary" onclick="sortHand()">牌を並べ替える</button>
+    <button class="secondary" onclick="loadExample()">サンプル手牌</button>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>対局サポート：1局ずつ進行</h2>
+  <p class="muted">手元の対局に合わせて、配牌13枚 → ツモ → 打牌を記録します。牌は自分で入力してください。</p>
+  <div class="actions">
+    <button class="action" id="startRoundBtn" onclick="startRound()">この13枚で局を開始</button>
+    <button class="secondary" id="endRoundBtn" onclick="endRound()" disabled>局を終了</button>
+    <button class="secondary danger" onclick="prepareNextRound()">次の局の準備（手牌を消去）</button>
+  </div>
+  <div class="result-box">
+    <p id="roundStatus" class="good">局は開始していません。配牌13枚を入力して「この13枚で局を開始」を押してください。</p>
+    <p id="roundInstruction" class="muted">局の開始後、牌ボタンからツモ牌を追加し、14枚になったら手牌の切りたい牌をクリックします。</p>
+  </div>
+  <h3>この局の履歴</h3>
+  <ol id="roundHistory"><li class="muted">まだ記録はありません。</li></ol>
+</section>
+
+<section class="panel">
+  <h2>③ 分析条件</h2>
+  <label>
+    手牌の状態
+    <select id="handMode">
+      <option value="auto">自動判定</option>
+      <option value="13">13枚：次のツモを分析</option>
+      <option value="14">14枚：打牌を分析</option>
+    </select>
+  </label>
+  <label>
+    自分の副露面子数
+    <select id="fixedMelds">
+      <option value="0">0（門前）</option>
+      <option value="1">1面子</option>
+      <option value="2">2面子</option>
+      <option value="3">3面子</option>
+      <option value="4">4面子</option>
+    </select>
+  </label>
+  <p class="muted">
+    副露面子数はシャンテン計算用です。鳴いた牌そのものは入力しないため、
+    役判定には副露の詳細を反映できません。
+  </p>
+  <hr>
+  <h3>見えている牌を登録</h3>
+  <p class="muted">
+    河・他家の副露・ドラ表示牌など、すでに見えている牌を追加してください。
+    自分の手牌はここに重複登録しません。
+  </p>
+  <div id="visiblePicker"></div>
+  <div class="actions">
+    <button class="secondary" onclick="undoVisible()">見えている牌を1枚戻す</button>
+    <button class="secondary danger" onclick="clearVisible()">見えている牌を消去</button>
+  </div>
+  <div id="visibleHand" class="hand" style="margin-top:10px"></div>
+  <p id="visibleCount" class="muted">見えている牌：0枚</p>
+  <hr>
+  <h3>追加設定</h3>
+  <label>
+    ドラ表示牌
+    <select id="doraIndicator">
+      <option value="-1">未設定</option>
+      <option value="0">一萬</option><option value="1">二萬</option>
+      <option value="2">三萬</option><option value="3">四萬</option>
+      <option value="4">五萬</option><option value="5">六萬</option>
+      <option value="6">七萬</option><option value="7">八萬</option>
+      <option value="8">九萬</option>
+      <option value="9">一筒</option><option value="10">二筒</option>
+      <option value="11">三筒</option><option value="12">四筒</option>
+      <option value="13">五筒</option><option value="14">六筒</option>
+      <option value="15">七筒</option><option value="16">八筒</option>
+      <option value="17">九筒</option>
+      <option value="18">一索</option><option value="19">二索</option>
+      <option value="20">三索</option><option value="21">四索</option>
+      <option value="22">五索</option><option value="23">六索</option>
+      <option value="24">七索</option><option value="25">八索</option>
+      <option value="26">九索</option>
+      <option value="27">東</option><option value="28">南</option>
+      <option value="29">西</option><option value="30">北</option>
+      <option value="31">白</option><option value="32">發</option>
+      <option value="33">中</option>
+    </select>
+  </label>
+  <label>
+    自風
+    <select id="seatWind">
+      <option value="27">東</option><option value="28">南</option>
+      <option value="29">西</option><option value="30">北</option>
+    </select>
+  </label>
+  <label>
+    場風
+    <select id="roundWind">
+      <option value="27">東</option><option value="28">南</option>
+      <option value="29">西</option><option value="30">北</option>
+    </select>
+  </label>
+  <label>
+    赤ドラ枚数
+    <select id="akaDora">
+      <option value="0">0枚</option>
+      <option value="1">1枚</option><option value="2">2枚</option>
+      <option value="3">3枚</option><option value="4">4枚</option>
+    </select>
+  </label>
+  <p class="muted">
+    赤ドラ枚数は手牌中の赤五萬・赤五筒・赤五索の合計として扱います。
+    赤五の具体的な種類は指定しない簡易設定です。
+  </p>
+  <div class="actions">
+    <button class="action" onclick="analyze()">🔍 AI分析を実行</button>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>④ 分析結果</h2>
+  <div id="result">牌を入力して「AI分析を実行」を押してください。</div>
+</section>
+
+<section class="panel">
+  <h2>⑤ このAIの判定について</h2>
+  <p>
+    シャンテン数は、アガリまでに必要な牌交換の距離を表す指標です。
+    0ならテンパイ、-1ならアガリ形です。
+  </p>
+  <p>
+    受け入れ枚数は、次の1枚でシャンテン数が改善する牌の残り枚数です。
+    ただし、相手が持っている見えない牌は推定できません。
+  </p>
+  <p class="muted">
+    役判定は入力された牌姿から分かる範囲の簡易判定です。
+    フリテン、リーチ条件、ツモ・ロン、槓、細かな符計算、点数の確定、
+    相手の手牌や押し引きは完全には評価しません。
+  </p>
+</section>
+</main>
+
+<footer>Mahjong AI Assistant · ローカルで動作するHTML/JavaScript</footer>
+
+<script>
+"use strict";
+
+// =====================================================
+// 牌の定義
+// 0～8: 萬子、9～17: 筒子、18～26: 索子、27～33: 字牌
+// =====================================================
+const TILE_NAMES=[];
+for(let i=1;i<=9;i++)TILE_NAMES.push(i+"萬");
+for(let i=1;i<=9;i++)TILE_NAMES.push(i+"筒");
+for(let i=1;i<=9;i++)TILE_NAMES.push(i+"索");
+TILE_NAMES.push("東","南","西","北","白","發","中");
+
+let hand=[];
+let visible=[];
+let roundActive=false;
+let roundNumber=0;
+let roundHistory=[];
+
+function suit(id){
+  return id<9?0:id<18?1:id<27?2:3;
+}
+function rank(id){
+  return id<27?id%9+1:0;
+}
+function isHonor(id){return id>=27}
+function isTerminal(id){return id<27&&(rank(id)===1||rank(id)===9)}
+function isYaochu(id){return isHonor(id)||isTerminal(id)}
+function isGreen(id){
+  return [19,20,21,23,25,32].includes(id);
+}
+function countsOf(arr){
+  const c=Array(34).fill(0);
+  for(const x of arr)c[x]++;
+  return c;
+}
+function tileText(id){
+  return TILE_NAMES[id]||"?";
+}
+function sortTiles(arr){
+  arr.sort((a,b)=>a-b);
+}
+function remainingCounts(arr,seen){
+  const a=countsOf(arr),v=countsOf(seen);
+  return a.map((n,i)=>Math.max(0,4-n-v[i]));
+}
+function sum(a){return a.reduce((x,y)=>x+y,0)}
+
+// =====================================================
+// 牌ボタン生成
+// =====================================================
+function buildPicker(targetId,callback){
+  const root=document.getElementById(targetId);
+  root.innerHTML="";
+  const groups=[
+    ["萬子",0,8],["筒子",9,17],["索子",18,26],["字牌",27,33]
+  ];
+  groups.forEach(([title,start,end])=>{
+    const h=document.createElement("div");
+    h.className="suit-title";
+    h.textContent=title;
+    root.appendChild(h);
+    const row=document.createElement("div");
+    row.className="tile-grid";
+    for(let id=start;id<=end;id++){
+      const b=document.createElement("button");
+      b.type="button";
+      b.className="tile";
+      b.textContent=TILE_NAMES[id];
+      b.onclick=()=>callback(id);
+      b.id=targetId+"-"+id;
+      row.appendChild(b);
+    }
+    root.appendChild(row);
+  });
+}
+
+function addTile(id){
+  if(roundActive && hand.length!==13){
+    alert("対局サポート中は、手牌が13枚のときにツモ牌を追加してください。先に打牌してください。");
+    return;
+  }
+  if(hand.length>=14){
+    alert("手牌は14枚までです。");
+    return;
+  }
+  const all=countsOf([...hand,...visible]);
+  if(all[id]>=4){
+    alert("手牌と見えている牌を合わせて、同じ牌は4枚までです。");
+    return;
+  }
+  hand.push(id);
+  if(roundActive && hand.length===14){
+    roundHistory.push("ツモ："+tileText(id));
+    renderRoundStatus();
+  }
+  refresh();
+  if(roundActive) analyze();
+}
+function addVisible(id){
+  if(visible.length>=70){
+    alert("見えている牌の登録数が多すぎます。");
+    return;
+  }
+  const all=countsOf([...hand,...visible]);
+  if(all[id]>=4){
+    alert("手牌と見えている牌を合わせて、同じ牌は4枚までです。");
+    return;
+  }
+  visible.push(id);
+  refresh();
+}
+function undoTile(){hand.pop();refresh()}
+function undoVisible(){visible.pop();refresh()}
+function clearHand(){
+  if(roundActive){
+    alert("局の進行中は手牌を全消去できません。「局を終了」を押してから操作してください。");
+    return;
+  }
+  hand=[];refresh();showMessage()
+}
+function clearVisible(){visible=[];refresh()}
+function showMessage(){
+  document.getElementById("result").textContent=
+    "牌を入力して「AI分析を実行」を押してください。";
+}
+function renderTileRow(root,arr,removeFn){
+  root.innerHTML="";
+  arr.forEach((id,index)=>{
+    const b=document.createElement("button");
+    b.type="button";
+    b.className="hand-tile";
+    b.textContent=TILE_NAMES[id];
+    if(root.id==="hand" && roundActive && arr.length===14){
+      b.title="この牌を打牌する";
+      b.onclick=()=>discardTile(index);
+    }else if(root.id==="hand" && roundActive){
+      b.title="ツモ待ち中";
+      b.disabled=true;
+      b.onclick=()=>{};
+    }else{
+      b.title="クリックで取り消す";
+      b.onclick=()=>removeFn(index);
+    }
+    root.appendChild(b);
+  });
+}
+function refresh(){
+  renderTileRow(document.getElementById("hand"),hand,i=>{
+    hand.splice(i,1);refresh();
+  });
+  renderTileRow(document.getElementById("visibleHand"),visible,i=>{
+    visible.splice(i,1);refresh();
+  });
+  document.getElementById("handCount").textContent=
+    "手牌："+hand.length+"枚 / 14枚";
+  document.getElementById("visibleCount").textContent=
+    "見えている牌："+visible.length+"枚";
+  for(let i=0;i<34;i++){
+    const all=countsOf([...hand,...visible]);
+    const a=document.getElementById("picker-"+i);
+    const b=document.getElementById("visiblePicker-"+i);
+    if(a)a.disabled=hand.length>=14||all[i]>=4;
+    if(b)b.disabled=all[i]>=4;
+  }
+}
+function sortHand(){sortTiles(hand);refresh()}
+function loadExample(){
+  hand=[0,1,2,3,4,5,9,10,11,18,19,20,27,27];
+  visible=[];
+  refresh();
+}
+
+// =====================================================
+// シャンテン数
+// 標準形、七対子、国士無双を比較
+// =====================================================
+function standardShanten(arr,fixedMelds=0){
+  const counts=countsOf(arr);
+  let best=8;
+  const memo=new Map();
+
+  function dfs(melds,taatsu,hasPair){
+    const key=counts.join("")+"|"+melds+"|"+taatsu+"|"+hasPair;
+    if(memo.has(key))return memo.get(key);
+
+    let i=0;
+    while(i<34&&counts[i]===0)i++;
+
+    if(i===34){
+      const totalMelds=melds+fixedMelds;
+      const usableTaatsu=Math.min(taatsu,Math.max(0,4-totalMelds));
+      const value=8-2*totalMelds-usableTaatsu-(hasPair?1:0);
+      memo.set(key,value);
+      return value;
+    }
+
+    let localBest=8;
+
+    // 余った牌を1枚取り除いて探索
+    counts[i]--;
+    localBest=Math.min(localBest,dfs(melds,taatsu,hasPair));
+    counts[i]++;
+
+    // 刻子
+    if(counts[i]>=3&&melds+fixedMelds<4){
+      counts[i]-=3;
+      localBest=Math.min(localBest,dfs(melds+1,taatsu,hasPair));
+      counts[i]+=3;
+    }
+
+    // 順子
+    if(i<27&&i%9<=6&&counts[i+1]>0&&counts[i+2]>0
+       &&melds+fixedMelds<4){
+      counts[i]--;counts[i+1]--;counts[i+2]--;
+      localBest=Math.min(localBest,dfs(melds+1,taatsu,hasPair));
+      counts[i]++;counts[i+1]++;counts[i+2]++;
+    }
+
+    // 雀頭
+    if(!hasPair&&counts[i]>=2){
+      counts[i]-=2;
+      localBest=Math.min(localBest,dfs(melds,taatsu,true));
+      counts[i]+=2;
+    }
+
+    // 対子をターツとして使う
+    if(counts[i]>=2&&taatsu<4){
+      counts[i]-=2;
+      localBest=Math.min(localBest,dfs(melds,taatsu+1,hasPair));
+      counts[i]+=2;
+    }
+
+    // 両面・嵌張候補
+    if(i<27&&taatsu<4){
+      if(i%9<=7&&counts[i+1]>0){
+        counts[i]--;counts[i+1]--;
+        localBest=Math.min(localBest,dfs(melds,taatsu+1,hasPair));
+        counts[i]++;counts[i+1]++;
+      }
+      if(i%9<=6&&counts[i+2]>0){
+        counts[i]--;counts[i+2]--;
+        localBest=Math.min(localBest,dfs(melds,taatsu+1,hasPair));
+        counts[i]++;counts[i+2]++;
+      }
+    }
+
+    memo.set(key,localBest);
+    return localBest;
+  }
+
+  best=dfs(0,0,false);
+  return best;
+}
+
+function chiitoiShanten(arr){
+  const c=countsOf(arr);
+  let pairs=0,distinct=0;
+  for(const n of c){
+    if(n>=1)distinct++;
+    if(n>=2)pairs++;
+  }
+  return 6-pairs+Math.max(0,7-distinct);
+}
+function kokushiShanten(arr){
+  const c=countsOf(arr);
+  const terminals=[0,8,9,17,18,26,27,28,29,30,31,32,33];
+  let unique=0,pair=false;
+  for(const id of terminals){
+    if(c[id]>0)unique++;
+    if(c[id]>=2)pair=true;
+  }
+  return 13-unique-(pair?1:0);
+}
+function shanten(arr,fixedMelds=0){
+  const std=standardShanten(arr,fixedMelds);
+  if(fixedMelds>0)return std;
+  return Math.min(std,chiitoiShanten(arr),kokushiShanten(arr));
+}
+
+// =====================================================
+// アガリ判定と分解
+// =====================================================
+function isStandardAgari(arr,fixedMelds=0){
+  if(arr.length!==14-fixedMelds*3)return false;
+  return standardShanten(arr,fixedMelds)===-1;
+}
+function isChiitoi(arr){
+  if(arr.length!==14)return false;
+  const c=countsOf(arr);
+  return c.every(n=>n===0||n===2)&&c.filter(n=>n===2).length===7;
+}
+function isKokushi(arr){
+  if(arr.length!==14)return false;
+  const c=countsOf(arr);
+  const t=[0,8,9,17,18,26,27,28,29,30,31,32,33];
+  return t.every(i=>c[i]>=1)&&t.some(i=>c[i]>=2)&&sum(c)===14;
+}
+function isAgari(arr,fixedMelds=0){
+  if(fixedMelds===0&&(isChiitoi(arr)||isKokushi(arr)))return true;
+  return standardShanten(arr,fixedMelds)===-1;
+}
+
+function getStandardDecompositions(arr,fixedMelds=0){
+  const c=countsOf(arr);
+  const results=[];
+  function meldDfs(i,melds,head){
+    while(i<34&&c[i]===0)i++;
+    if(i===34){
+      if(melds.length===4-fixedMelds&&head!==null){
+        results.push({head,melds:melds.map(m=>({...m}))});
+      }
+      return;
+    }
+    if(head===null&&c[i]>=2){
+      c[i]-=2;
+      meldDfs(i,[...melds],i);
+      c[i]+=2;
+    }
+    if(melds.length>=4-fixedMelds)return;
+    if(c[i]>=3){
+      c[i]-=3;
+      melds.push({type:"triplet",tile:i});
+      meldDfs(i+1,melds,head);
+      melds.pop();c[i]+=3;
+    }
+    if(i<27&&i%9<=6&&c[i+1]>0&&c[i+2]>0){
+      c[i]--;c[i+1]--;c[i+2]--;
+      melds.push({type:"sequence",tile:i});
+      meldDfs(i,melds,head);
+      melds.pop();c[i]++;c[i+1]++;c[i+2]++;
+    }
+  }
+  meldDfs(0,[],null);
+  return results;
+}
+
+// =====================================================
+// 待ち牌・受け入れ
+// =====================================================
+function improvingTiles(arr,fixedMelds,seen){
+  const current=shanten(arr,fixedMelds);
+  const left=remainingCounts(arr,seen);
+  const result=[];
+  for(let id=0;id<34;id++){
+    if(left[id]<=0)continue;
+    const next=shanten([...arr,id],fixedMelds);
+    if(next<current){
+      result.push({id,left:left[id],shanten:next});
+    }
+  }
+  return result;
+}
+function winningTiles(arr,fixedMelds,seen){
+  const left=remainingCounts(arr,seen);
+  const result=[];
+  for(let id=0;id<34;id++){
+    if(left[id]<=0)continue;
+    if(isAgari([...arr,id],fixedMelds)){
+      result.push({id,left:left[id]});
+    }
+  }
+  return result;
+}
+function ukeireTotal(tiles){return sum(tiles.map(x=>x.left))}
+function waitType(arr,id){
+  const c=countsOf(arr);
+  c[id]++;
+  if(isChiitoi([...arr,id]))return "七対子";
+  if(isKokushi([...arr,id]))return "国士無双";
+  const decomps=getStandardDecompositions([...arr,id],0);
+  const types=[];
+  for(const d of decomps){
+    if(d.head===id){
+      const seq=d.melds.find(m=>m.type==="sequence"&&id>=m.tile&&id<=m.tile+2);
+      if(seq){
+        const start=seq.tile;
+        const r=rank(id);
+        if(r===2&&start%9===0||r===8&&start%9===6)
+          types.push("辺張");
+        else if(r===start%9+2&&r!==2&&r!==8)
+          types.push("嵌張");
+        else types.push("両面");
+      }else{
+        types.push("単騎・その他");
+      }
+    }else{
+      types.push("シャンポン等");
+    }
+  }
+  if(types.includes("両面"))return "両面を含む";
+  if(types.includes("嵌張"))return "嵌張を含む";
+  if(types.includes("辺張"))return "辺張を含む";
+  return types[0]||"待ち形";
+}
+
+// =====================================================
+// 役判定（入力情報から分かる範囲の簡易判定）
+// =====================================================
+function getYaku(arr,options={}){
+  const c=countsOf(arr);
+  const closed=options.fixedMelds===0;
+  const names=[];
+  const add=(name,han)=>names.push({name,han});
+
+  if(arr.length!==14)return names;
+
+  if(isKokushi(arr)){add("国士無双",13);return names}
+  if(isChiitoi(arr)){add("七対子",2)}
+
+  const allSimple=arr.every(id=>!isYaochu(id));
+  if(allSimple)add("断么九（タンヤオ）",1);
+
+  const dragons=[31,32,33];
+  dragons.forEach(id=>{if(c[id]>=3)add("役牌（"+tileText(id)+"）",1)});
+  [options.seatWind,options.roundWind].filter((v,i,a)=>a.indexOf(v)===i)
+    .forEach(id=>{if(c[id]>=3)add("役牌（"+tileText(id)+"）",1)});
+
+  const allHonors=arr.every(isHonor);
+  if(allHonors)add("字一色",13);
+  if(arr.every(isYaochu))add("混老頭",2);
+  if(arr.every(isGreen))add("緑一色",13);
+
+  const suitsUsed=new Set(arr.filter(id=>id<27).map(suit));
+  const hasHonor=arr.some(isHonor);
+  if(suitsUsed.size===1&&hasHonor)add("混一色",closed?3:2);
+  if(suitsUsed.size===1&&!hasHonor&&arr.every(id=>id<27))
+    add("清一色",closed?6:5);
+
+  const decomps=getStandardDecompositions(arr,options.fixedMelds||0);
+  if(decomps.length){
+    for(const d of decomps){
+      const m=d.melds;
+      const allTriplets=m.every(x=>x.type==="triplet");
+      if(allTriplets)add("対々和",2);
+
+      const allSequences=m.every(x=>x.type==="sequence");
+      const headValued=d.head>=31 ||
+        d.head===options.seatWind || d.head===options.roundWind;
+      if(allSequences&&!headValued){
+        // 平和は待ち形・門前条件なども必要なので候補として表示
+        if(closed)add("平和候補（待ち形の確認が必要）",1);
+      }
+
+      const seqs=m.filter(x=>x.type==="sequence").map(x=>x.tile);
+      const sameStart=seqs.some((x,i)=>seqs.some((y,j)=>i<j&&x===y));
+      if(closed&&sameStart)add("一盃口候補",1);
+
+      const triplets=m.filter(x=>x.type==="triplet").map(x=>x.tile);
+      if(triplets.filter(x=>x>=31).length>=2&&
+         triplets.some(x=>x===31)&&triplets.some(x=>x===32)&&triplets.some(x=>x===33)){
+        add("小三元候補",2);
+      }
+
+      const hasOutside= m.some(x=>x.type==="sequence"&&
+        (x.tile%9===0||x.tile%9===6))||
+        m.some(x=>x.type==="triplet"&&isYaochu(x.tile))||
+        isYaochu(d.head);
+      const noHonors=arr.every(x=>x<27);
+      if(hasOutside&&arr.some(isHonor)&&
+         m.every(x=>x.type==="sequence"||
+           (x.type==="triplet"&&isYaochu(x.tile)))&&isYaochu(d.head)){
+        add("混全帯么九候補",closed?2:1);
+      }
+      if(noHonors&&hasOutside&&
+         m.every(x=>x.type==="sequence"||
+           (x.type==="triplet"&&isTerminal(x.tile)))&&isTerminal(d.head)){
+        add("純全帯么九候補",closed?3:2);
+      }
+    }
+  }
+
+  // 役名の重複を除く
+  const unique=[];
+  const used=new Set();
+  for(const y of names){
+    if(!used.has(y.name)){unique.push(y);used.add(y.name)}
+  }
+  return unique;
+}
+
+// =====================================================
+// 表示
+// =====================================================
+function escapeHTML(s){
+  return String(s).replace(/[&<>"']/g,ch=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[ch]));
+}
+function tilePills(items){
+  if(!items.length)return "なし";
+  return items.map(x=>
+    '<span class="pill">'+escapeHTML(tileText(x.id))+
+    '：残り'+x.left+'枚</span>').join("");
+}
+function shantenText(n){
+  if(n===-1)return "アガリ";
+  if(n===0)return "テンパイ";
+  return n+"シャンテン";
+}
+function renderShanten(n){
+  return '<span class="big">'+escapeHTML(shantenText(n))+'</span>';
+}
+function setResult(html){
+  document.getElementById("result").innerHTML=html;
+}
+function getOptions(){
+  return {
+    fixedMelds:Number(document.getElementById("fixedMelds").value),
+    seatWind:Number(document.getElementById("seatWind").value),
+    roundWind:Number(document.getElementById("roundWind").value),
+    doraIndicator:Number(document.getElementById("doraIndicator").value),
+    akaDora:Number(document.getElementById("akaDora").value)
+  };
+}
+function doraTile(indicator){
+  if(indicator<0)return -1;
+  if(indicator<27){
+    const base=Math.floor(indicator/9)*9;
+    return base+(indicator%9+1)%9;
+  }
+  if(indicator<=30)return 27+(indicator-27+1)%4;
+  return 31+(indicator-31+1)%3;
+}
+function doraCount(arr,options){
+  const d=doraTile(options.doraIndicator);
+  return d<0?0:countsOf(arr)[d];
+}
+function makeResultSummary(arr,options){
+  const yaku=getYaku(arr,options);
+  const dora=doraCount(arr,options);
+  const han=sum(yaku.map(x=>x.han))+dora+options.akaDora;
+  let html='<div class="result-box"><h3>役の候補</h3>';
+  if(yaku.length){
+    html+='<ul>'+yaku.map(y=>'<li>'+escapeHTML(y.name)+
+      '（'+y.han+'翻相当）</li>').join('')+'</ul>';
+  }else{
+    html+='<p>この簡易判定では役を確認できませんでした。</p>';
+  }
+  html+='<p>ドラ表示牌からのドラ：'+dora+'枚</p>';
+  html+='<p>赤ドラ設定：'+options.akaDora+'枚</p>';
+  html+='<p class="muted">参考翻数：'+han+
+    '翻相当。役の候補には成立条件の確認が必要なものが含まれます。'+
+    'この数値は正式な点数計算ではありません。</p></div>';
+  return html;
+}
+
+// =====================================================
+// 分析本体
+// =====================================================
+function analyze(){
+  const mode=document.getElementById("handMode").value;
+  const options=getOptions();
+  let arr=hand.slice();
+  const seen=visible.slice();
+  const melds=options.fixedMelds;
+
+  if(arr.length!==13&&arr.length!==14){
+    setResult('<p class="bad">手牌は13枚か14枚にしてください。</p>');
+    return;
+  }
+  if(melds>4){
+    setResult("副露面子数を確認してください。");
+    return;
+  }
+  if(countsOf([...arr,...seen]).some(n=>n>4)){
+    setResult('<p class="bad">同じ牌が5枚以上になっています。入力を確認してください。</p>');
+    return;
+  }
+
+  if(mode==="13"&&arr.length!==13){
+    setResult('<p class="bad">13枚分析を選んだので、手牌を13枚にしてください。</p>');
+    return;
+  }
+  if(mode==="14"&&arr.length!==14){
+    setResult('<p class="bad">14枚分析を選んだので、手牌を14枚にしてください。</p>');
+    return;
+  }
+
+  const current=shanten(arr,melds);
+  const left=remainingCounts(arr,seen);
+  let html='<div class="result-box"><h3>現在の手牌</h3>'+
+    renderShanten(current)+'<p>手牌 '+arr.length+'枚、副露面子 '+melds+'面子</p></div>';
+
+  if(arr.length===14&&isAgari(arr,melds)){
+    html+='<div class="result-box"><p class="good">🎉 アガリ形です！</p>'+
+      '入力された牌でアガリの形が成立しています。</div>';
+    html+=makeResultSummary(arr,options);
+    setResult(html);
+    return;
+  }
+
+  if(arr.length===13){
+    const waits=winningTiles(arr,melds,seen);
+    if(waits.length){
+      html+='<div class="result-box"><h3>テンパイ待ち候補</h3>'+
+        tilePills(waits)+'<p class="good">見えていない牌の合計：'+
+        ukeireTotal(waits)+'枚</p>';
+      waits.forEach(w=>{
+        html+='<p>'+escapeHTML(tileText(w.id))+'待ち：'+
+          escapeHTML(waitType(arr,w.id))+'</p>';
+      });
+      html+='</div>';
+    }else{
+      const improve=improvingTiles(arr,melds,seen);
+      html+='<div class="result-box"><h3>次のツモのおすすめ</h3>'+
+        '<p>シャンテン数を改善する牌：</p>'+
+        tilePills(improve)+
+        '<p class="good">受け入れ合計：'+ukeireTotal(improve)+'枚</p></div>';
+    }
+  }else{
+    const optionsByDiscard=[];
+    const seenAfterDiscard=seen.slice();
+
+    for(let i=0;i<arr.length;i++){
+      const discard=arr[i];
+      const next=arr.slice();
+      next.splice(i,1);
+      const s=shanten(next,melds);
+      const improve=[];
+      const wait=s===0?winningTiles(next,melds,seenAfterDiscard):[];
+      for(let id=0;id<34;id++){
+        if(left[id]<=0)continue;
+        if(shanten([...next,id],melds)<s){
+          improve.push({id,left:left[id]});
+        }
+      }
+      optionsByDiscard.push({
+        discard,next,s,
+        improve,
+        ukeire:ukeireTotal(improve),
+        waits:wait,
+        waitCount:ukeireTotal(wait)
+      });
+    }
+
+    optionsByDiscard.sort((a,b)=>
+      a.s-b.s||b.ukeire-a.ukeire||b.waitCount-a.waitCount);
+
+    const bestS=optionsByDiscard[0].s;
+    const bestUkeire=Math.max(...optionsByDiscard
+      .filter(x=>x.s===bestS).map(x=>x.ukeire));
+    const best=optionsByDiscard.filter(x=>
+      x.s===bestS&&x.ukeire===bestUkeire);
+
+    html+='<div class="result-box"><h3>AIのおすすめ打牌</h3>'+
+      '<p class="good">シャンテン数と受け入れ枚数を比較した候補</p>';
+    best.forEach(x=>{
+      html+='<span class="pill">'+escapeHTML(tileText(x.discard))+
+        'を切る</span>';
+    });
+    html+='<p>打牌後：'+escapeHTML(shantenText(bestS))+'</p>'+
+      '<p>受け入れ：'+bestUkeire+'枚</p></div>';
+
+    html+='<div class="result-box"><h3>打牌候補の比較</h3>'+
+      '<p class="muted">同じ牌を切る候補は1つにまとめています。</p>'+
+      '<div style="overflow-x:auto"><table><thead><tr>'+
+      '<th>切る牌</th><th>シャンテン</th><th>受け入れ</th><th>改善牌</th>'+
+      '</tr></thead><tbody>';
+
+    const unique=new Map();
+    optionsByDiscard.forEach(x=>{
+      if(!unique.has(x.discard))unique.set(x.discard,x);
+    });
+    [...unique.values()].forEach(x=>{
+      const isBest=x.s===bestS&&x.ukeire===bestUkeire;
+      html+='<tr class="'+(isBest?'best-row':'')+'"><td><b>'+
+        escapeHTML(tileText(x.discard))+'</b></td><td>'+
+        escapeHTML(shantenText(x.s))+'</td><td>'+x.ukeire+'枚</td><td>'+
+        (x.improve.length?x.improve.map(y=>escapeHTML(tileText(y.id))).join("・"):"なし")+
+        '</td></tr>';
+    });
+    html+='</tbody></table></div></div>';
+
+    const top=optionsByDiscard[0];
+    if(top.s===0){
+      html+='<div class="result-box"><h3>テンパイ後の待ち牌</h3>'+
+        tilePills(top.waits)+'<p class="good">待ちの残り枚数：'+
+        top.waitCount+'枚</p></div>';
+    }
+  }
+
+  html+='<details><summary>牌の残り枚数を確認</summary>'+
+    '<p class="muted">手牌と「見えている牌」に登録された枚数を引いた残りです。</p>'+
+    '<div class="tile-grid">';
+  left.forEach((n,id)=>{
+    html+='<span class="pill">'+escapeHTML(tileText(id))+'：'+n+'枚</span>';
+  });
+  html+='</div></details>';
+
+  setResult(html);
+}
+
+// =====================================================
+// 1局ずつ進める対局サポート
+// =====================================================
+function startRound(){
+  if(hand.length!==13){
+    alert("局を開始するには、手牌を配牌の13枚にしてください。");
+    return;
+  }
+  if(roundActive){
+    alert("すでに局が進行中です。先に局を終了してください。");
+    return;
+  }
+  roundActive=true;
+  roundNumber++;
+  roundHistory=[];
+  roundHistory.push("局開始：配牌13枚");
+  renderRoundStatus();
+  refresh();
+  analyze();
+}
+function discardTile(index){
+  if(!roundActive || hand.length!==14)return;
+  const tile=hand[index];
+  hand.splice(index,1);
+  roundHistory.push("打牌："+tileText(tile));
+  renderRoundStatus();
+  refresh();
+  analyze();
+}
+function endRound(){
+  if(!roundActive){
+    alert("進行中の局はありません。");
+    return;
+  }
+  roundHistory.push("局終了");
+  roundActive=false;
+  renderRoundStatus();
+  refresh();
+}
+function prepareNextRound(){
+  roundActive=false;
+  hand=[];
+  roundHistory=[];
+  renderRoundStatus();
+  refresh();
+  showMessage();
+}
+function renderRoundStatus(){
+  const status=document.getElementById("roundStatus");
+  const instruction=document.getElementById("roundInstruction");
+  const start=document.getElementById("startRoundBtn");
+  const end=document.getElementById("endRoundBtn");
+  if(roundActive){
+    status.textContent="第"+roundNumber+"局：進行中（手牌 "+hand.length+"枚）";
+    instruction.textContent=hand.length===13
+      ?"次のツモ牌を、上の牌ボタンから1枚追加してください。"
+      :"14枚あります。手牌の中から切る牌をクリックしてください。打牌すると13枚に戻ります。";
+    start.disabled=true;
+    end.disabled=false;
+  }else{
+    status.textContent=roundNumber>0
+      ?"第"+roundNumber+"局は終了または未進行です。次の局は配牌13枚を入力して開始してください。"
+      :"局は開始していません。配牌13枚を入力して「この13枚で局を開始」を押してください。";
+    instruction.textContent="局の開始後、牌ボタンからツモ牌を追加し、14枚になったら手牌の切りたい牌をクリックします。";
+    start.disabled=false;
+    end.disabled=true;
+  }
+  const list=document.getElementById("roundHistory");
+  list.innerHTML="";
+  if(!roundHistory.length){
+    const li=document.createElement("li");
+    li.className="muted";
+    li.textContent="まだ記録はありません。";
+    list.appendChild(li);
+  }else{
+    roundHistory.forEach(item=>{
+      const li=document.createElement("li");
+      li.textContent=item;
+      list.appendChild(li);
+    });
+  }
+}
+
+// =====================================================
+// 初期化
+// =====================================================
+buildPicker("picker",addTile);
+buildPicker("visiblePicker",addVisible);
+refresh();
+renderRoundStatus();
+</script>
+</body>
+</html>
